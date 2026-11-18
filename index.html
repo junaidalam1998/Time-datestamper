@@ -1,0 +1,2284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>PhotoTimestamper — Bulk EXIF Date & Timestamp Editor</title>
+
+  <!-- Google Fonts: Inter & JetBrains Mono for crisp UI and authentic digital timestamps -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Playfair+Display:wght@600;700&display=swap" rel="stylesheet" />
+
+  <!-- External CDN Libraries: exifr for EXIF extraction & JSZip for batch ZIP exports -->
+  <script src="https://cdn.jsdelivr.net/npm/exifr/dist/full.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+  <style>
+    /* ==========================================================================
+       1. CSS DESIGN TOKENS & RESET
+       ========================================================================== */
+    :root {
+      --bg-app: #f8fafc;
+      --bg-surface: #ffffff;
+      --bg-subtle: #f1f5f9;
+      --bg-canvas-checker: #e2e8f0;
+
+      --text-primary: #0f172a;
+      --text-secondary: #475569;
+      --text-muted: #94a3b8;
+
+      --border-light: #e2e8f0;
+      --border-medium: #cbd5e1;
+
+      --accent-primary: #2563eb;
+      --accent-primary-hover: #1d4ed8;
+      --accent-soft: #eff6ff;
+
+      --success-bg: #ecfdf5;
+      --success-text: #047857;
+      --success-border: #a7f3d0;
+
+      --warning-bg: #fffbeb;
+      --warning-text: #b45309;
+      --warning-border: #fde68a;
+
+      --danger-text: #dc2626;
+      --danger-bg: #fef2f2;
+
+      --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(15, 23, 42, 0.07), 0 2px 4px -2px rgba(15, 23, 42, 0.05);
+      --shadow-lg: 0 12px 24px -4px rgba(15, 23, 42, 0.08), 0 4px 8px -2px rgba(15, 23, 42, 0.04);
+
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 16px;
+      --radius-full: 9999px;
+
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+    }
+
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%;
+      font-family: var(--font-sans);
+      background-color: var(--bg-app);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+    }
+
+    button, input, select {
+      font-family: inherit;
+      font-size: inherit;
+      color: inherit;
+    }
+
+    button {
+      cursor: pointer;
+      border: none;
+      background: none;
+    }
+
+    /* ==========================================================================
+       2. TOP HEADER & PRIVACY BADGE
+       ========================================================================== */
+    .app-shell {
+      display: flex;
+      flex-direction: column;
+      min-height: 100vh;
+    }
+
+    .app-header {
+      height: 64px;
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-light);
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 30;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -0.02em;
+      color: var(--text-primary);
+    }
+
+    .brand-icon {
+      width: 34px;
+      height: 34px;
+      border-radius: var(--radius-sm);
+      background: linear-gradient(135deg, #2563eb, #1d4ed8);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.3);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .privacy-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      background-color: var(--success-bg);
+      color: var(--success-text);
+      border: 1px solid var(--success-border);
+      border-radius: var(--radius-full);
+      font-size: 0.78rem;
+      font-weight: 600;
+    }
+
+    .privacy-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background-color: #10b981;
+      box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+    }
+
+    .btn-ghost-sm {
+      padding: 7px 12px;
+      border-radius: var(--radius-sm);
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-light);
+      background-color: var(--bg-surface);
+      transition: all 0.15s ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .btn-ghost-sm:hover {
+      background-color: var(--bg-subtle);
+      color: var(--text-primary);
+      border-color: var(--border-medium);
+    }
+
+    /* ==========================================================================
+       3. INITIAL LANDING DROPZONE VIEW
+       ========================================================================== */
+    .dropzone-screen {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 20px;
+      max-width: 760px;
+      margin: 0 auto;
+      width: 100%;
+    }
+
+    .hero-copy {
+      text-align: center;
+      margin-bottom: 28px;
+    }
+
+    .hero-copy h1 {
+      font-size: clamp(1.65rem, 3vw, 2.25rem);
+      font-weight: 700;
+      letter-spacing: -0.03em;
+      margin-bottom: 10px;
+      color: var(--text-primary);
+    }
+
+    .hero-copy p {
+      font-size: 1rem;
+      color: var(--text-secondary);
+      max-width: 540px;
+      margin: 0 auto;
+    }
+
+    .dropzone-box {
+      width: 100%;
+      background-color: var(--bg-surface);
+      border: 2px dashed var(--border-medium);
+      border-radius: var(--radius-lg);
+      padding: 52px 24px;
+      text-align: center;
+      transition: all 0.2s ease;
+      box-shadow: var(--shadow-lg);
+      cursor: pointer;
+    }
+
+    .dropzone-box:hover,
+    .dropzone-box.drag-active {
+      border-color: var(--accent-primary);
+      background-color: var(--accent-soft);
+      transform: translateY(-2px);
+    }
+
+    .dropzone-icon-wrap {
+      width: 64px;
+      height: 64px;
+      margin: 0 auto 18px;
+      border-radius: 50%;
+      background-color: var(--accent-soft);
+      color: var(--accent-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: transform 0.2s ease;
+    }
+
+    .dropzone-box:hover .dropzone-icon-wrap {
+      transform: scale(1.06);
+    }
+
+    .dropzone-title {
+      font-size: 1.15rem;
+      font-weight: 600;
+      margin-bottom: 6px;
+    }
+
+    .dropzone-subtitle {
+      font-size: 0.88rem;
+      color: var(--text-secondary);
+      margin-bottom: 20px;
+    }
+
+    .btn-primary-lg {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 12px 24px;
+      background-color: var(--accent-primary);
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 0.95rem;
+      border-radius: var(--radius-md);
+      box-shadow: 0 4px 12px rgba(37, 99, 235, 0.25);
+      transition: background-color 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-primary-lg:hover {
+      background-color: var(--accent-primary-hover);
+    }
+
+    .feature-pills {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 10px;
+      margin-top: 24px;
+    }
+
+    .feature-pill {
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-light);
+      padding: 6px 12px;
+      border-radius: var(--radius-full);
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* ==========================================================================
+       4. SPLIT-SCREEN WORKSPACE LAYOUT
+       ========================================================================== */
+    .workspace {
+      display: none;
+      flex: 1;
+      height: calc(100vh - 64px);
+      overflow: hidden;
+    }
+
+    .workspace.active {
+      display: grid;
+      grid-template-columns: 380px 1fr;
+    }
+
+    /* Left Sidebar: Controls */
+    .controls-sidebar {
+      background-color: var(--bg-surface);
+      border-right: 1px solid var(--border-light);
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .control-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-md);
+      padding: 16px;
+      box-shadow: var(--shadow-sm);
+    }
+
+    .control-card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .control-card-title {
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Date Source Badges */
+    .source-badge {
+      font-size: 0.7rem;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: var(--radius-full);
+    }
+
+    .source-badge.exif {
+      background-color: var(--success-bg);
+      color: var(--success-text);
+      border: 1px solid var(--success-border);
+    }
+
+    .source-badge.fallback {
+      background-color: var(--warning-bg);
+      color: var(--warning-text);
+      border: 1px solid var(--warning-border);
+    }
+
+    .source-badge.manual {
+      background-color: var(--accent-soft);
+      color: var(--accent-primary);
+      border: 1px solid #bfdbfe;
+    }
+
+    /* Form Controls */
+    .field-group {
+      margin-bottom: 14px;
+    }
+
+    .field-group:last-child {
+      margin-bottom: 0;
+    }
+
+    .field-label {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.82rem;
+      font-weight: 500;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .field-value-badge {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      color: var(--text-secondary);
+      background-color: var(--bg-subtle);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .input-control,
+    .select-control {
+      width: 100%;
+      padding: 8px 11px;
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-sm);
+      background-color: var(--bg-surface);
+      font-size: 0.88rem;
+      color: var(--text-primary);
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .input-control:focus,
+    .select-control:focus {
+      outline: none;
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+    }
+
+    .format-tokens-hint {
+      font-size: 0.72rem;
+      color: var(--text-muted);
+      margin-top: 5px;
+      line-height: 1.4;
+    }
+
+    .format-tokens-hint code {
+      font-family: var(--font-mono);
+      background: var(--bg-subtle);
+      padding: 1px 4px;
+      border-radius: 3px;
+      color: var(--text-secondary);
+    }
+
+    /* Range Sliders */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 6px;
+      background: var(--border-light);
+      border-radius: var(--radius-full);
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    }
+
+    input[type="range"]::-moz-range-thumb {
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--accent-primary);
+      cursor: pointer;
+      border: 2px solid #ffffff;
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+    }
+
+    /* Color Swatches & Picker */
+    .color-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .color-swatch {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      border: 2px solid var(--border-light);
+      cursor: pointer;
+      transition: transform 0.12s ease, border-color 0.12s ease;
+    }
+
+    .color-swatch:hover {
+      transform: scale(1.1);
+    }
+
+    .color-swatch.active {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px var(--accent-primary);
+    }
+
+    input[type="color"] {
+      width: 32px;
+      height: 28px;
+      padding: 0;
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-sm);
+      background: none;
+      cursor: pointer;
+    }
+
+    /* Toggle Switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 4px 0;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 40px;
+      height: 22px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider-round {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: var(--border-medium);
+      transition: 0.2s;
+      border-radius: 22px;
+    }
+
+    .slider-round::before {
+      position: absolute;
+      content: "";
+      height: 16px;
+      width: 16px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: 0.2s;
+      border-radius: 50%;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
+    }
+
+    .switch input:checked + .slider-round {
+      background-color: var(--accent-primary);
+    }
+
+    .switch input:checked + .slider-round::before {
+      transform: translateX(18px);
+    }
+
+    .sub-controls {
+      margin-top: 10px;
+      padding-top: 10px;
+      border-top: 1px dashed var(--border-light);
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .sub-controls.hidden {
+      display: none;
+    }
+
+    /* Corner Snap Grid */
+    .corner-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .corner-btn {
+      padding: 8px 10px;
+      border: 1px solid var(--border-medium);
+      border-radius: var(--radius-sm);
+      background-color: var(--bg-surface);
+      font-size: 0.8rem;
+      font-weight: 500;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    .corner-btn:hover {
+      background-color: var(--bg-subtle);
+      color: var(--text-primary);
+    }
+
+    .corner-btn.active {
+      background-color: var(--accent-soft);
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+      font-weight: 600;
+    }
+
+    .drag-tip {
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      margin-top: 8px;
+      text-align: center;
+    }
+
+    /* Action Buttons at bottom of Sidebar */
+    .export-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      padding-bottom: 12px;
+    }
+
+    .btn-secondary {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-medium);
+      background-color: var(--bg-surface);
+      color: var(--text-primary);
+      font-weight: 600;
+      font-size: 0.88rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.15s ease;
+    }
+
+    .btn-secondary:hover {
+      background-color: var(--bg-subtle);
+      border-color: var(--text-secondary);
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 11px 16px;
+      border-radius: var(--radius-md);
+      background-color: var(--accent-primary);
+      color: #ffffff;
+      font-weight: 600;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 2px 6px rgba(37, 99, 235, 0.25);
+      transition: background-color 0.15s ease;
+    }
+
+    .btn-primary:hover:not(:disabled) {
+      background-color: var(--accent-primary-hover);
+    }
+
+    .btn-primary:disabled {
+      opacity: 0.65;
+      cursor: not-allowed;
+    }
+
+    .export-format-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.8rem;
+      color: var(--text-secondary);
+    }
+
+    .export-format-row select {
+      width: auto;
+      padding: 4px 8px;
+      font-size: 0.8rem;
+    }
+
+    /* ==========================================================================
+       5. RIGHT STAGE: LIVE CANVAS PREVIEW + FILMSTRIP GALLERY
+       ========================================================================== */
+    .preview-stage {
+      display: flex;
+      flex-direction: column;
+      background-color: var(--bg-app);
+      height: 100%;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Top Info Bar inside Stage */
+    .stage-topbar {
+      padding: 10px 20px;
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-light);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.82rem;
+      color: var(--text-secondary);
+    }
+
+    .photo-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      overflow: hidden;
+    }
+
+    .photo-filename {
+      font-weight: 600;
+      color: var(--text-primary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 260px;
+    }
+
+    .photo-dimensions {
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      background-color: var(--bg-subtle);
+      padding: 2px 8px;
+      border-radius: 4px;
+    }
+
+    /* Canvas Viewport Container */
+    .canvas-viewport {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      overflow: hidden;
+      position: relative;
+      background-image:
+        linear-gradient(45deg, #e2e8f0 25%, transparent 25%),
+        linear-gradient(-45deg, #e2e8f0 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, #e2e8f0 75%),
+        linear-gradient(-45deg, transparent 75%, #e2e8f0 75%);
+      background-size: 20px 20px;
+      background-position: 0 0, 0 10px, 10px -10px, -10px 0;
+    }
+
+    .canvas-viewport.drag-over-stage::after {
+      content: "Drop photos to add to batch";
+      position: absolute;
+      inset: 16px;
+      background: rgba(37, 99, 235, 0.92);
+      color: #ffffff;
+      font-size: 1.25rem;
+      font-weight: 600;
+      border-radius: var(--radius-lg);
+      border: 3px dashed #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      pointer-events: none;
+    }
+
+    #previewCanvas {
+      max-width: 100%;
+      max-height: 100%;
+      width: auto;
+      height: auto;
+      border-radius: 4px;
+      box-shadow: 0 16px 36px rgba(15, 23, 42, 0.18);
+      background-color: #ffffff;
+      touch-action: none;
+      cursor: default;
+    }
+
+    #previewCanvas.hover-stamp {
+      cursor: grab;
+    }
+
+    #previewCanvas.dragging-stamp {
+      cursor: grabbing;
+    }
+
+    /* Filmstrip Thumbnail Strip */
+    .filmstrip-bar {
+      height: 112px;
+      background-color: var(--bg-surface);
+      border-top: 1px solid var(--border-light);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      overflow-x: auto;
+    }
+
+    .add-more-card {
+      flex-shrink: 0;
+      width: 78px;
+      height: 78px;
+      border: 2px dashed var(--border-medium);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      color: var(--text-secondary);
+      font-size: 0.72rem;
+      font-weight: 600;
+      transition: all 0.15s ease;
+    }
+
+    .add-more-card:hover {
+      border-color: var(--accent-primary);
+      color: var(--accent-primary);
+      background-color: var(--accent-soft);
+    }
+
+    .filmstrip-list {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .thumb-item {
+      position: relative;
+      flex-shrink: 0;
+      width: 84px;
+      height: 78px;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 2px solid transparent;
+      cursor: pointer;
+      background-color: var(--bg-subtle);
+      transition: transform 0.12s ease, border-color 0.12s ease;
+    }
+
+    .thumb-item:hover {
+      transform: translateY(-2px);
+    }
+
+    .thumb-item.active {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.25);
+    }
+
+    .thumb-item img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .thumb-remove {
+      position: absolute;
+      top: 4px;
+      right: 4px;
+      width: 20px;
+      height: 20px;
+      border-radius: 50%;
+      background: rgba(15, 23, 42, 0.72);
+      color: #ffffff;
+      font-size: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+
+    .thumb-item:hover .thumb-remove {
+      opacity: 1;
+    }
+
+    .thumb-remove:hover {
+      background: var(--danger-text);
+    }
+
+    .thumb-badge {
+      position: absolute;
+      bottom: 4px;
+      left: 4px;
+      right: 4px;
+      background: rgba(15, 23, 42, 0.72);
+      color: #ffffff;
+      font-size: 0.62rem;
+      font-family: var(--font-mono);
+      padding: 1px 4px;
+      border-radius: 3px;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* Toast Notification */
+    .toast-container {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast {
+      background-color: #0f172a;
+      color: #ffffff;
+      padding: 10px 16px;
+      border-radius: var(--radius-md);
+      font-size: 0.85rem;
+      font-weight: 500;
+      box-shadow: var(--shadow-lg);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      animation: slideUp 0.2s ease forwards;
+    }
+
+    @keyframes slideUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    /* ==========================================================================
+       6. RESPONSIVE BREAKPOINTS (MOBILE / TABLET)
+       ========================================================================== */
+    @media (max-width: 900px) {
+      .workspace.active {
+        display: flex;
+        flex-direction: column-reverse;
+        height: auto;
+        min-height: calc(100vh - 64px);
+        overflow: visible;
+      }
+
+      .preview-stage {
+        height: 56vh;
+        min-height: 360px;
+        border-bottom: 1px solid var(--border-light);
+      }
+
+      .controls-sidebar {
+        border-right: none;
+        overflow: visible;
+      }
+    }
+
+    @media (max-width: 540px) {
+      .app-header {
+        padding: 0 14px;
+      }
+
+      .privacy-badge span.hide-xs {
+        display: none;
+      }
+
+      .photo-filename {
+        max-width: 140px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-shell">
+    <!-- ======================================================================
+         HEADER
+         ====================================================================== -->
+    <header class="app-header">
+      <div class="brand">
+        <div class="brand-icon" aria-hidden="true">
+          <!-- Calendar / Camera Timestamp SVG Icon -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="3" ry="3"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+            <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"></path>
+          </svg>
+        </div>
+        <span>PhotoTimestamper</span>
+      </div>
+
+      <div class="header-actions">
+        <div class="privacy-badge" title="Your photos never leave your device. All EXIF reading and image rendering run locally in your browser.">
+          <span class="privacy-dot"></span>
+          <span>100% Local <span class="hide-xs">Browser Processing</span></span>
+        </div>
+        <button id="clearAllBtn" class="btn-ghost-sm" style="display: none;" title="Remove all uploaded photos">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="3 6 5 6 21 6"></polyline>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+          </svg>
+          <span>Reset</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Hidden File Input supporting bulk JPG, PNG, WEBP -->
+    <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp" multiple hidden />
+
+    <!-- ======================================================================
+         INITIAL UPLOAD DROPZONE SCREEN
+         ====================================================================== -->
+    <main id="dropzoneScreen" class="dropzone-screen">
+      <div class="hero-copy">
+        <h1>Add Authentic Date &amp; Time Stamps to Your Photos</h1>
+        <p>Automatically extract original camera EXIF timestamps, customize typography &amp; placement, and batch export in seconds.</p>
+      </div>
+
+      <div id="mainDropzone" class="dropzone-box" role="button" tabindex="0" aria-label="Upload photos by clicking or dragging and dropping">
+        <div class="dropzone-icon-wrap">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+            <polyline points="17 8 12 3 7 8"></polyline>
+            <line x1="12" y1="3" x2="12" y2="15"></line>
+          </svg>
+        </div>
+        <div class="dropzone-title">Drag &amp; drop photos here</div>
+        <div class="dropzone-subtitle">Supports bulk JPG, PNG, and WEBP images at full native resolution</div>
+        <button type="button" class="btn-primary-lg" id="selectPhotosBtn">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            <polyline points="21 15 16 10 5 21"></polyline>
+          </svg>
+          <span>Select Photos</span>
+        </button>
+      </div>
+
+      <div class="feature-pills">
+        <span class="feature-pill">✓ Auto EXIF DateTimeOriginal</span>
+        <span class="feature-pill">✓ Drag-to-Position on Canvas</span>
+        <span class="feature-pill">✓ Full-Resolution Export</span>
+        <span class="feature-pill">✓ Bulk ZIP Download</span>
+      </div>
+    </main>
+
+    <!-- ======================================================================
+         SPLIT-SCREEN EDITOR WORKSPACE
+         ====================================================================== -->
+    <section id="workspace" class="workspace" aria-label="Photo Timestamp Editor">
+      <!-- LEFT SIDEBAR: CUSTOMIZATION CONTROLS -->
+      <aside class="controls-sidebar">
+        <!-- 1. Date & Time Card -->
+        <div class="control-card">
+          <div class="control-card-header">
+            <span class="control-card-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+              Date &amp; Time
+            </span>
+            <span id="dateSourceBadge" class="source-badge exif">EXIF Original</span>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="dateTimeInput">
+              <span>Capture Date &amp; Time</span>
+              <button type="button" id="resetExifDateBtn" style="font-size: 0.72rem; color: var(--accent-primary); font-weight: 600;">Reset to Original</button>
+            </label>
+            <input type="datetime-local" id="dateTimeInput" class="input-control" step="1" />
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="formatPresetSelect">Format Preset</label>
+            <select id="formatPresetSelect" class="select-control">
+              <option value="YYYY-MM-DD HH:mm:ss">YYYY-MM-DD HH:mm:ss (2026-11-17 14:30:05)</option>
+              <option value="MM/DD/YYYY hh:mm A">MM/DD/YYYY hh:mm A (11/17/2026 02:30 PM)</option>
+              <option value="DD MMM YYYY">DD MMM YYYY (17 Nov 2026)</option>
+              <option value="DD/MM/YYYY HH:mm">DD/MM/YYYY HH:mm (17/11/2026 14:30)</option>
+              <option value="MMM DD, YYYY">MMM DD, YYYY (Nov 17, 2026)</option>
+              <option value="'YY MM DD">Retro Film ('26 11 17)</option>
+              <option value="custom">Custom Pattern...</option>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="customFormatInput">
+              <span>Format Pattern</span>
+              <span id="formattedPreviewText" class="field-value-badge"></span>
+            </label>
+            <input type="text" id="customFormatInput" class="input-control" value="YYYY-MM-DD HH:mm:ss" placeholder="e.g. YYYY-MM-DD HH:mm:ss" />
+            <div class="format-tokens-hint">
+              Tokens: <code>YYYY</code> <code>YY</code> <code>MMMM</code> <code>MMM</code> <code>MM</code> <code>DD</code> <code>HH</code> <code>hh</code> <code>mm</code> <code>ss</code> <code>A</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. Typography & Styling Card -->
+        <div class="control-card">
+          <div class="control-card-header">
+            <span class="control-card-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <polyline points="4 7 4 4 20 4 20 7"></polyline>
+                <line x1="9" y1="20" x2="15" y2="20"></line>
+                <line x1="12" y1="4" x2="12" y2="20"></line>
+              </svg>
+              Appearance &amp; Style
+            </span>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="fontFamilySelect">Font Style</label>
+            <select id="fontFamilySelect" class="select-control">
+              <option value="'JetBrains Mono', monospace">Digital Monospace (Classic Camera)</option>
+              <option value="'Inter', sans-serif">Clean Sans-Serif (Modern)</option>
+              <option value="'Playfair Display', serif">Editorial Serif</option>
+            </select>
+          </div>
+
+          <div class="field-group">
+            <label class="field-label" for="fontSizeSlider">
+              <span>Font Size</span>
+              <span id="fontSizeVal" class="field-value-badge">3.2%</span>
+            </label>
+            <input type="range" id="fontSizeSlider" min="1.2" max="8.0" step="0.1" value="3.2" />
+          </div>
+
+          <div class="field-group">
+            <label class="field-label">Text Color</label>
+            <div class="color-row">
+              <button type="button" class="color-swatch active" data-color="#FF9500" style="background-color: #FF9500;" title="Classic Camera Amber"></button>
+              <button type="button" class="color-swatch" data-color="#FFFFFF" style="background-color: #FFFFFF;" title="Pure White"></button>
+              <button type="button" class="color-swatch" data-color="#FFD60A" style="background-color: #FFD60A;" title="Retro Yellow"></button>
+              <button type="button" class="color-swatch" data-color="#FF3B30" style="background-color: #FF3B30;" title="LED Red"></button>
+              <button type="button" class="color-swatch" data-color="#000000" style="background-color: #000000;" title="Black"></button>
+              <input type="color" id="textColorPicker" value="#FF9500" title="Custom Text Color" />
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="toggle-row">
+              <label class="field-label" for="shadowToggle" style="margin-bottom: 0;">Drop Shadow</label>
+              <label class="switch">
+                <input type="checkbox" id="shadowToggle" checked />
+                <span class="slider-round"></span>
+              </label>
+            </div>
+          </div>
+
+          <div class="field-group">
+            <div class="toggle-row">
+              <label class="field-label" for="bgPillToggle" style="margin-bottom: 0;">Background Box / Pill</label>
+              <label class="switch">
+                <input type="checkbox" id="bgPillToggle" />
+                <span class="slider-round"></span>
+              </label>
+            </div>
+
+            <div id="bgPillSubControls" class="sub-controls hidden">
+              <div class="field-group" style="margin-bottom: 0;">
+                <label class="field-label" for="bgColorPicker">
+                  <span>Background Color</span>
+                  <input type="color" id="bgColorPicker" value="#000000" />
+                </label>
+              </div>
+              <div class="field-group" style="margin-bottom: 0;">
+                <label class="field-label" for="bgOpacitySlider">
+                  <span>Background Opacity</span>
+                  <span id="bgOpacityVal" class="field-value-badge">55%</span>
+                </label>
+                <input type="range" id="bgOpacitySlider" min="10" max="100" step="5" value="55" />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Position Card -->
+        <div class="control-card">
+          <div class="control-card-header">
+            <span class="control-card-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+                <polyline points="5 9 2 12 5 15"></polyline>
+                <polyline points="9 5 12 2 15 5"></polyline>
+                <polyline points="15 19 12 22 9 19"></polyline>
+                <polyline points="19 9 22 12 19 15"></polyline>
+                <line x1="2" y1="12" x2="22" y2="12"></line>
+                <line x1="12" y1="2" x2="12" y2="22"></line>
+              </svg>
+              Position
+            </span>
+            <span id="posCoordsBadge" class="field-value-badge">96%, 95%</span>
+          </div>
+
+          <div class="corner-grid">
+            <button type="button" class="corner-btn" data-corner="top-left">↖ Top-Left</button>
+            <button type="button" class="corner-btn" data-corner="top-right">↗ Top-Right</button>
+            <button type="button" class="corner-btn" data-corner="bottom-left">↙ Bottom-Left</button>
+            <button type="button" class="corner-btn active" data-corner="bottom-right">↘ Bottom-Right</button>
+          </div>
+
+          <div class="field-group" style="margin-top: 12px;">
+            <label class="field-label" for="edgeMarginSlider">
+              <span>Corner Edge Padding</span>
+              <span id="edgeMarginVal" class="field-value-badge">3.5%</span>
+            </label>
+            <input type="range" id="edgeMarginSlider" min="1.0" max="12.0" step="0.5" value="3.5" />
+          </div>
+
+          <div class="drag-tip">Tip: Drag the timestamp directly on the preview image to place it anywhere.</div>
+        </div>
+
+        <!-- 4. Batch Sync & Export Actions -->
+        <div class="export-actions">
+          <button type="button" id="applyToAllBtn" class="btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+            </svg>
+            <span>Apply Style &amp; Position to All (<span id="batchCountLabel">1</span>)</span>
+          </button>
+
+          <div class="export-format-row">
+            <span>Export Image Format:</span>
+            <select id="exportFormatSelect" class="select-control">
+              <option value="image/jpeg">JPEG (95% Quality)</option>
+              <option value="image/png">PNG (Lossless)</option>
+            </select>
+          </div>
+
+          <button type="button" id="downloadCurrentBtn" class="btn-secondary">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+            <span>Download Current Photo</span>
+          </button>
+
+          <button type="button" id="downloadAllZipBtn" class="btn-primary">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path>
+              <polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline>
+              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+            <span id="zipBtnLabel">Download All as ZIP</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- RIGHT STAGE: CANVAS PREVIEW + FILMSTRIP -->
+      <div id="previewStage" class="preview-stage">
+        <div class="stage-topbar">
+          <div class="photo-meta">
+            <span id="activeFilename" class="photo-filename">photo.jpg</span>
+            <span id="activeDimensions" class="photo-dimensions">0 × 0</span>
+          </div>
+          <div>
+            <span id="photoIndexIndicator">1 of 1</span>
+          </div>
+        </div>
+
+        <div id="canvasViewport" class="canvas-viewport">
+          <canvas id="previewCanvas"></canvas>
+        </div>
+
+        <div class="filmstrip-bar" aria-label="Uploaded Photos Filmstrip">
+          <button type="button" id="addMoreBtn" class="add-more-card" title="Add more photos">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            <span>Add Photos</span>
+          </button>
+          <div id="filmstripList" class="filmstrip-list"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="toast-container" aria-live="polite"></div>
+
+  <script>
+    /**
+     * PhotoTimestamper — 100% Client-Side Bulk Photo Timestamp Application
+     * Architecture:
+     *  - State Store (`state.photos`): Holds each uploaded file, decoded HTMLImageElement,
+     *    original EXIF/fallback Date, editable Date, and per-photo styling/position settings.
+     *  - EXIF Engine: Uses `exifr.parse()` to extract DateTimeOriginal / CreateDate, falling
+     *    back cleanly to `file.lastModified`.
+     *  - Canvas Renderer (`renderPhotoToCanvas`): Renders at full native pixel resolution
+     *    with normalized font scaling, optional background pill, drop shadow, and anchor-aware
+     *    clamping so text never clips outside edges.
+     *  - Interactive Drag Engine: Converts pointer coordinates on the scaled CSS canvas back
+     *    to native image coordinates for smooth drag-and-drop placement.
+     */
+    (() => {
+      'use strict';
+
+      // =========================================================================
+      // 1. DEFAULT STYLE TEMPLATE & APPLICATION STATE
+      // =========================================================================
+      const DEFAULT_STYLE = {
+        formatPreset: 'YYYY-MM-DD HH:mm:ss',
+        formatPattern: 'YYYY-MM-DD HH:mm:ss',
+        fontFamily: "'JetBrains Mono', monospace",
+        fontSizePct: 3.2,       // Percentage of min(imageWidth, imageHeight)
+        textColor: '#FF9500',
+        dropShadow: true,
+        bgPill: false,
+        bgColor: '#000000',
+        bgOpacity: 0.55,
+        corner: 'bottom-right', // 'top-left' | 'top-right' | 'bottom-left' | 'bottom-right' | 'custom'
+        marginPct: 3.5,
+        // Normalized center/anchor position (0.0 to 1.0) when dragged or snapped
+        posX: 0.965,
+        posY: 0.965,
+        align: 'right',         // 'left' | 'center' | 'right'
+        baseline: 'bottom'      // 'top' | 'middle' | 'bottom'
+      };
+
+      const state = {
+        photos: [],       // Array of PhotoItem objects
+        activeIndex: 0,
+        lastStampBounds: null, // Bounding box on native canvas for hit-testing drags
+        isDragging: false,
+        dragOffset: { x: 0, y: 0 }
+      };
+
+      // =========================================================================
+      // 2. DOM ELEMENT REFERENCES
+      // =========================================================================
+      const els = {
+        fileInput: document.getElementById('fileInput'),
+        dropzoneScreen: document.getElementById('dropzoneScreen'),
+        mainDropzone: document.getElementById('mainDropzone'),
+        selectPhotosBtn: document.getElementById('selectPhotosBtn'),
+        workspace: document.getElementById('workspace'),
+        clearAllBtn: document.getElementById('clearAllBtn'),
+
+        // Left Sidebar Controls
+        dateSourceBadge: document.getElementById('dateSourceBadge'),
+        dateTimeInput: document.getElementById('dateTimeInput'),
+        resetExifDateBtn: document.getElementById('resetExifDateBtn'),
+        formatPresetSelect: document.getElementById('formatPresetSelect'),
+        customFormatInput: document.getElementById('customFormatInput'),
+        formattedPreviewText: document.getElementById('formattedPreviewText'),
+
+        fontFamilySelect: document.getElementById('fontFamilySelect'),
+        fontSizeSlider: document.getElementById('fontSizeSlider'),
+        fontSizeVal: document.getElementById('fontSizeVal'),
+        colorSwatches: document.querySelectorAll('.color-swatch'),
+        textColorPicker: document.getElementById('textColorPicker'),
+        shadowToggle: document.getElementById('shadowToggle'),
+        bgPillToggle: document.getElementById('bgPillToggle'),
+        bgPillSubControls: document.getElementById('bgPillSubControls'),
+        bgColorPicker: document.getElementById('bgColorPicker'),
+        bgOpacitySlider: document.getElementById('bgOpacitySlider'),
+        bgOpacityVal: document.getElementById('bgOpacityVal'),
+
+        cornerBtns: document.querySelectorAll('.corner-btn'),
+        edgeMarginSlider: document.getElementById('edgeMarginSlider'),
+        edgeMarginVal: document.getElementById('edgeMarginVal'),
+        posCoordsBadge: document.getElementById('posCoordsBadge'),
+
+        applyToAllBtn: document.getElementById('applyToAllBtn'),
+        batchCountLabel: document.getElementById('batchCountLabel'),
+        exportFormatSelect: document.getElementById('exportFormatSelect'),
+        downloadCurrentBtn: document.getElementById('downloadCurrentBtn'),
+        downloadAllZipBtn: document.getElementById('downloadAllZipBtn'),
+        zipBtnLabel: document.getElementById('zipBtnLabel'),
+
+        // Right Preview Stage
+        previewStage: document.getElementById('previewStage'),
+        canvasViewport: document.getElementById('canvasViewport'),
+        previewCanvas: document.getElementById('previewCanvas'),
+        activeFilename: document.getElementById('activeFilename'),
+        activeDimensions: document.getElementById('activeDimensions'),
+        photoIndexIndicator: document.getElementById('photoIndexIndicator'),
+        addMoreBtn: document.getElementById('addMoreBtn'),
+        filmstripList: document.getElementById('filmstripList'),
+
+        toastContainer: document.getElementById('toastContainer')
+      };
+
+      const ctx = els.previewCanvas.getContext('2d');
+
+      // =========================================================================
+      // 3. DATE FORMATTING & PARSING UTILITIES
+      // =========================================================================
+      const MONTHS_SHORT = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const MONTHS_FULL = [
+        'January', 'February', 'March', 'April', 'May', 'June',
+        'July', 'August', 'September', 'October', 'November', 'December'
+      ];
+
+      /**
+       * Formats a JavaScript Date object according to token pattern
+       * Supports: YYYY, YY, MMMM, MMM, MM, M, DD, D, HH, H, hh, h, mm, ss, A, a
+       */
+      function formatTimestamp(dateObj, pattern) {
+        if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) {
+          return 'Invalid Date';
+        }
+
+        const year = dateObj.getFullYear();
+        const month = dateObj.getMonth(); // 0-11
+        const day = dateObj.getDate();
+        const hours24 = dateObj.getHours();
+        const minutes = dateObj.getMinutes();
+        const seconds = dateObj.getSeconds();
+
+        const hours12 = hours24 % 12 === 0 ? 12 : hours24 % 12;
+        const ampm = hours24 >= 12 ? 'PM' : 'AM';
+
+        const pad = (n) => String(n).padStart(2, '0');
+
+        const tokenMap = {
+          YYYY: String(year),
+          YY: String(year).slice(-2),
+          MMMM: MONTHS_FULL[month],
+          MMM: MONTHS_SHORT[month],
+          MM: pad(month + 1),
+          M: String(month + 1),
+          DD: pad(day),
+          D: String(day),
+          HH: pad(hours24),
+          H: String(hours24),
+          hh: pad(hours12),
+          h: String(hours12),
+          mm: pad(minutes),
+          ss: pad(seconds),
+          A: ampm,
+          a: ampm.toLowerCase()
+        };
+
+        // Match longest tokens first so 'MMMM' isn't partially replaced by 'MM'
+        const regex = /YYYY|YY|MMMM|MMM|MM|M|DD|D|HH|H|hh|h|mm|ss|A|a/g;
+        return pattern.replace(regex, (match) => tokenMap[match] ?? match);
+      }
+
+      /**
+       * Converts a Date to `YYYY-MM-DDTHH:mm:ss` string required by <input type="datetime-local">
+       */
+      function toDateTimeLocalValue(dateObj) {
+        if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) return '';
+        const pad = (n) => String(n).padStart(2, '0');
+        return (
+          `${dateObj.getFullYear()}-${pad(dateObj.getMonth() + 1)}-${pad(dateObj.getDate())}` +
+          `T${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}:${pad(dateObj.getSeconds())}`
+        );
+      }
+
+      /**
+       * Parses a `YYYY-MM-DDTHH:mm` or `YYYY-MM-DDTHH:mm:ss` string into a local Date
+       */
+      function fromDateTimeLocalValue(val) {
+        if (!val) return null;
+        const [datePart, timePart = '00:00:00'] = val.split('T');
+        const [y, m, d] = datePart.split('-').map(Number);
+        const [hh = 0, mm = 0, ss = 0] = timePart.split(':').map(Number);
+        const parsed = new Date(y, m - 1, d, hh, mm, ss);
+        return isNaN(parsed.getTime()) ? null : parsed;
+      }
+
+      // =========================================================================
+      // 4. TOAST FEEDBACK HELPER
+      // =========================================================================
+      function showToast(message) {
+        const toast = document.createElement('div');
+        toast.className = 'toast';
+        toast.innerHTML = `
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2.5">
+            <polyline points="20 6 9 17 4 12"></polyline>
+          </svg>
+          <span>${message}</span>
+        `;
+        els.toastContainer.appendChild(toast);
+        setTimeout(() => {
+          toast.style.opacity = '0';
+          toast.style.transform = 'translateY(6px)';
+          toast.style.transition = 'all 0.2s ease';
+          setTimeout(() => toast.remove(), 220);
+        }, 2800);
+      }
+
+      // =========================================================================
+      // 5. FILE INGESTION & EXIF METADATA EXTRACTION
+      // =========================================================================
+      async function handleFiles(fileList) {
+        const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
+        const files = Array.from(fileList).filter((f) => validTypes.includes(f.type));
+
+        if (files.length === 0) {
+          showToast('Please upload valid JPG, PNG, or WEBP images.');
+          return;
+        }
+
+        // Inherit style from currently active photo if batch already has photos
+        const baseStyle = state.photos.length > 0
+          ? { ...state.photos[state.activeIndex].style }
+          : { ...DEFAULT_STYLE };
+
+        const newPhotos = await Promise.all(
+          files.map(async (file) => {
+            // 1. Extract EXIF capture date via exifr
+            let extractedDate = null;
+            let dateSource = 'fallback'; // 'exif' | 'fallback' | 'manual'
+
+            try {
+              if (window.exifr) {
+                const exifData = await window.exifr.parse(file, ['DateTimeOriginal', 'CreateDate', 'ModifyDate']);
+                const rawExifDate = exifData?.DateTimeOriginal || exifData?.CreateDate || exifData?.ModifyDate;
+                if (rawExifDate instanceof Date && !isNaN(rawExifDate.getTime())) {
+                  extractedDate = rawExifDate;
+                  dateSource = 'exif';
+                }
+              }
+            } catch (err) {
+              console.warn(`EXIF read skipped for ${file.name}:`, err);
+            }
+
+            // Fallback to file's lastModified timestamp if EXIF date is missing
+            if (!extractedDate) {
+              extractedDate = new Date(file.lastModified || Date.now());
+              dateSource = 'fallback';
+            }
+
+            // 2. Decode image into an HTMLImageElement + thumbnail data URL
+            const objectUrl = URL.createObjectURL(file);
+            const img = await loadImage(objectUrl);
+
+            return {
+              id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+              file,
+              name: file.name,
+              objectUrl,
+              img,
+              width: img.naturalWidth,
+              height: img.naturalHeight,
+              originalDate: new Date(extractedDate.getTime()),
+              originalSource: dateSource,
+              currentDate: new Date(extractedDate.getTime()),
+              dateSource,
+              style: { ...baseStyle }
+            };
+          })
+        );
+
+        const wasEmpty = state.photos.length === 0;
+        state.photos.push(...newPhotos);
+
+        if (wasEmpty) {
+          state.activeIndex = 0;
+          els.dropzoneScreen.style.display = 'none';
+          els.workspace.classList.add('active');
+          els.clearAllBtn.style.display = 'inline-flex';
+        } else {
+          state.activeIndex = state.photos.length - newPhotos.length;
+        }
+
+        renderFilmstrip();
+        selectPhoto(state.activeIndex);
+        showToast(`Loaded ${newPhotos.length} photo${newPhotos.length > 1 ? 's' : ''}`);
+      }
+
+      function loadImage(src) {
+        return new Promise((resolve, reject) => {
+          const img = new Image();
+          img.onload = () => resolve(img);
+          img.onerror = reject;
+          img.src = src;
+        });
+      }
+
+      // =========================================================================
+      // 6. FULL-RESOLUTION HTML5 CANVAS RENDERING ENGINE
+      // =========================================================================
+      function hexToRgba(hex, alpha) {
+        const clean = hex.replace('#', '');
+        const bigint = parseInt(clean, 16);
+        const r = (bigint >> 16) & 255;
+        const g = (bigint >> 8) & 255;
+        const b = bigint & 255;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+      }
+
+      /**
+       * Renders a PhotoItem onto any target <canvas> at full native resolution.
+       * Returns the bounding box `{ x, y, width, height }` of the rendered timestamp
+       * in native pixel coordinates so the preview canvas can hit-test drags.
+       */
+      function renderPhotoToCanvas(photo, targetCanvas) {
+        const { img, width, height, currentDate, style } = photo;
+        targetCanvas.width = width;
+        targetCanvas.height = height;
+
+        const context = targetCanvas.getContext('2d');
+        context.clearRect(0, 0, width, height);
+
+        // 1. Draw original high-res photo
+        context.drawImage(img, 0, 0, width, height);
+
+        // 2. Format timestamp string
+        const stampText = formatTimestamp(currentDate, style.formatPattern);
+        if (!stampText) return null;
+
+        // 3. Calculate proportional font size based on smaller image dimension
+        const minDim = Math.min(width, height);
+        const fontSizePx = Math.max(12, Math.round(minDim * (style.fontSizePct / 100)));
+
+        context.save();
+        context.font = `700 ${fontSizePx}px ${style.fontFamily}`;
+        context.textBaseline = 'top';
+        context.textAlign = 'left';
+
+        const metrics = context.measureText(stampText);
+        const textWidth = metrics.width;
+        const textHeight = fontSizePx * 1.15;
+
+        // Padding around text when background pill is enabled
+        const padX = style.bgPill ? Math.round(fontSizePx * 0.45) : 0;
+        const padY = style.bgPill ? Math.round(fontSizePx * 0.28) : 0;
+        const boxWidth = textWidth + padX * 2;
+        const boxHeight = textHeight + padY * 2;
+
+        // 4. Compute top-left (drawX, drawY) from normalized anchor coordinates
+        let anchorX = style.posX * width;
+        let anchorY = style.posY * height;
+
+        let drawX = anchorX;
+        let drawY = anchorY;
+
+        if (style.align === 'right') drawX = anchorX - boxWidth;
+        else if (style.align === 'center') drawX = anchorX - boxWidth / 2;
+
+        if (style.baseline === 'bottom') drawY = anchorY - boxHeight;
+        else if (style.baseline === 'middle') drawY = anchorY - boxHeight / 2;
+
+        // Clamp within image boundaries with a subtle safety margin
+        const safetyMargin = Math.max(4, Math.round(minDim * 0.005));
+        drawX = Math.max(safetyMargin, Math.min(width - boxWidth - safetyMargin, drawX));
+        drawY = Math.max(safetyMargin, Math.min(height - boxHeight - safetyMargin, drawY));
+
+        // 5. Optional Background Pill / Box
+        if (style.bgPill) {
+          context.save();
+          context.fillStyle = hexToRgba(style.bgColor, style.bgOpacity);
+          const radius = Math.round(fontSizePx * 0.25);
+          drawRoundedRect(context, drawX, drawY, boxWidth, boxHeight, radius);
+          context.fill();
+          context.restore();
+        }
+
+        // 6. Optional Drop Shadow for legibility over bright skies/highlights
+        if (style.dropShadow) {
+          context.shadowColor = 'rgba(0, 0, 0, 0.85)';
+          context.shadowBlur = Math.max(3, Math.round(fontSizePx * 0.14));
+          context.shadowOffsetX = Math.max(1, Math.round(fontSizePx * 0.05));
+          context.shadowOffsetY = Math.max(1, Math.round(fontSizePx * 0.05));
+        } else {
+          context.shadowColor = 'transparent';
+          context.shadowBlur = 0;
+          context.shadowOffsetX = 0;
+          context.shadowOffsetY = 0;
+        }
+
+        // 7. Render Timestamp Text
+        context.fillStyle = style.textColor;
+        context.fillText(stampText, drawX + padX, drawY + padY + (textHeight - fontSizePx) * 0.35);
+        context.restore();
+
+        return {
+          x: drawX,
+          y: drawY,
+          width: boxWidth,
+          height: boxHeight
+        };
+      }
+
+      function drawRoundedRect(context, x, y, w, h, r) {
+        const radius = Math.min(r, w / 2, h / 2);
+        context.beginPath();
+        context.moveTo(x + radius, y);
+        context.arcTo(x + w, y, x + w, y + h, radius);
+        context.arcTo(x + w, y + h, x, y + h, radius);
+        context.arcTo(x, y + h, x, y, radius);
+        context.arcTo(x, y, x + w, y, radius);
+        context.closePath();
+      }
+
+      function refreshLivePreview() {
+        const activePhoto = state.photos[state.activeIndex];
+        if (!activePhoto) return;
+
+        state.lastStampBounds = renderPhotoToCanvas(activePhoto, els.previewCanvas);
+        els.formattedPreviewText.textContent = formatTimestamp(
+          activePhoto.currentDate,
+          activePhoto.style.formatPattern
+        );
+        els.posCoordsBadge.textContent = `${Math.round(activePhoto.style.posX * 100)}%, ${Math.round(activePhoto.style.posY * 100)}%`;
+      }
+
+      // =========================================================================
+      // 7. UI SYNCHRONIZATION & FILMSTRIP GALLERY
+      // =========================================================================
+      function selectPhoto(index) {
+        if (index < 0 || index >= state.photos.length) return;
+        state.activeIndex = index;
+        const photo = state.photos[index];
+        const s = photo.style;
+
+        // Top Stage Metadata
+        els.activeFilename.textContent = photo.name;
+        els.activeDimensions.textContent = `${photo.width} × ${photo.height} px`;
+        els.photoIndexIndicator.textContent = `${index + 1} of ${state.photos.length}`;
+        els.batchCountLabel.textContent = state.photos.length;
+
+        // Date & Time Controls
+        els.dateTimeInput.value = toDateTimeLocalValue(photo.currentDate);
+        updateDateSourceBadge(photo.dateSource);
+
+        els.formatPresetSelect.value = s.formatPreset;
+        els.customFormatInput.value = s.formatPattern;
+
+        // Appearance Controls
+        els.fontFamilySelect.value = s.fontFamily;
+        els.fontSizeSlider.value = s.fontSizePct;
+        els.fontSizeVal.textContent = `${s.fontSizePct.toFixed(1)}%`;
+
+        els.textColorPicker.value = s.textColor;
+        els.colorSwatches.forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.color.toUpperCase() === s.textColor.toUpperCase());
+        });
+
+        els.shadowToggle.checked = s.dropShadow;
+        els.bgPillToggle.checked = s.bgPill;
+        els.bgPillSubControls.classList.toggle('hidden', !s.bgPill);
+        els.bgColorPicker.value = s.bgColor;
+        els.bgOpacitySlider.value = Math.round(s.bgOpacity * 100);
+        els.bgOpacityVal.textContent = `${Math.round(s.bgOpacity * 100)}%`;
+
+        // Position Controls
+        els.edgeMarginSlider.value = s.marginPct;
+        els.edgeMarginVal.textContent = `${s.marginPct.toFixed(1)}%`;
+        els.cornerBtns.forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.corner === s.corner);
+        });
+
+        // Update active highlight in filmstrip
+        document.querySelectorAll('.thumb-item').forEach((el, idx) => {
+          el.classList.toggle('active', idx === index);
+        });
+
+        refreshLivePreview();
+      }
+
+      function updateDateSourceBadge(source) {
+        els.dateSourceBadge.className = `source-badge ${source}`;
+        if (source === 'exif') {
+          els.dateSourceBadge.textContent = 'EXIF Original';
+        } else if (source === 'fallback') {
+          els.dateSourceBadge.textContent = 'File Modified Date';
+        } else {
+          els.dateSourceBadge.textContent = 'Manual Override';
+        }
+      }
+
+      function renderFilmstrip() {
+        els.filmstripList.innerHTML = '';
+        state.photos.forEach((photo, idx) => {
+          const item = document.createElement('div');
+          item.className = `thumb-item ${idx === state.activeIndex ? 'active' : ''}`;
+          item.title = photo.name;
+
+          const shortDate = formatTimestamp(photo.currentDate, 'MM/DD/YY');
+
+          item.innerHTML = `
+            <img src="${photo.objectUrl}" alt="${photo.name}" loading="lazy" />
+            <button type="button" class="thumb-remove" title="Remove photo" aria-label="Remove ${photo.name}">×</button>
+            <div class="thumb-badge">${shortDate}</div>
+          `;
+
+          item.addEventListener('click', (e) => {
+            if (e.target.closest('.thumb-remove')) return;
+            selectPhoto(idx);
+          });
+
+          item.querySelector('.thumb-remove').addEventListener('click', (e) => {
+            e.stopPropagation();
+            removePhoto(idx);
+          });
+
+          els.filmstripList.appendChild(item);
+        });
+
+        els.batchCountLabel.textContent = state.photos.length;
+      }
+
+      function removePhoto(index) {
+        const removed = state.photos.splice(index, 1)[0];
+        if (removed?.objectUrl) {
+          URL.revokeObjectURL(removed.objectUrl);
+        }
+
+        if (state.photos.length === 0) {
+          els.workspace.classList.remove('active');
+          els.dropzoneScreen.style.display = 'flex';
+          els.clearAllBtn.style.display = 'none';
+          els.filmstripList.innerHTML = '';
+          return;
+        }
+
+        if (state.activeIndex >= state.photos.length) {
+          state.activeIndex = state.photos.length - 1;
+        }
+        renderFilmstrip();
+        selectPhoto(state.activeIndex);
+      }
+
+      function snapToCorner(photo, corner) {
+        const margin = photo.style.marginPct / 100;
+        photo.style.corner = corner;
+
+        switch (corner) {
+          case 'top-left':
+            photo.style.posX = margin;
+            photo.style.posY = margin;
+            photo.style.align = 'left';
+            photo.style.baseline = 'top';
+            break;
+          case 'top-right':
+            photo.style.posX = 1 - margin;
+            photo.style.posY = margin;
+            photo.style.align = 'right';
+            photo.style.baseline = 'top';
+            break;
+          case 'bottom-left':
+            photo.style.posX = margin;
+            photo.style.posY = 1 - margin;
+            photo.style.align = 'left';
+            photo.style.baseline = 'bottom';
+            break;
+          case 'bottom-right':
+          default:
+            photo.style.posX = 1 - margin;
+            photo.style.posY = 1 - margin;
+            photo.style.align = 'right';
+            photo.style.baseline = 'bottom';
+            break;
+        }
+      }
+
+      // =========================================================================
+      // 8. INTERACTIVE CANVAS DRAG-AND-DROP POSITIONING
+      // =========================================================================
+      function getCanvasNativeCoords(clientX, clientY) {
+        const rect = els.previewCanvas.getBoundingClientRect();
+        const scaleX = els.previewCanvas.width / rect.width;
+        const scaleY = els.previewCanvas.height / rect.height;
+        return {
+          x: (clientX - rect.left) * scaleX,
+          y: (clientY - rect.top) * scaleY
+        };
+      }
+
+      function isPointInBounds(pt, bounds) {
+        if (!bounds) return false;
+        // Generous hit padding for comfortable touch & mouse dragging
+        const pad = 20;
+        return (
+          pt.x >= bounds.x - pad &&
+          pt.x <= bounds.x + bounds.width + pad &&
+          pt.y >= bounds.y - pad &&
+          pt.y <= bounds.y + bounds.height + pad
+        );
+      }
+
+      els.previewCanvas.addEventListener('pointerdown', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo || !state.lastStampBounds) return;
+
+        const pt = getCanvasNativeCoords(e.clientX, e.clientY);
+        if (isPointInBounds(pt, state.lastStampBounds)) {
+          state.isDragging = true;
+          els.previewCanvas.setPointerCapture(e.pointerId);
+          els.previewCanvas.classList.add('dragging-stamp');
+
+          // Switch to center anchor while dragging so placement feels natural
+          const centerX = state.lastStampBounds.x + state.lastStampBounds.width / 2;
+          const centerY = state.lastStampBounds.y + state.lastStampBounds.height / 2;
+
+          state.dragOffset = {
+            x: pt.x - centerX,
+            y: pt.y - centerY
+          };
+
+          photo.style.corner = 'custom';
+          photo.style.align = 'center';
+          photo.style.baseline = 'middle';
+          els.cornerBtns.forEach((b) => b.classList.remove('active'));
+        }
+      });
+
+      els.previewCanvas.addEventListener('pointermove', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+
+        const pt = getCanvasNativeCoords(e.clientX, e.clientY);
+
+        if (!state.isDragging) {
+          els.previewCanvas.classList.toggle('hover-stamp', isPointInBounds(pt, state.lastStampBounds));
+          return;
+        }
+
+        const targetCenterX = pt.x - state.dragOffset.x;
+        const targetCenterY = pt.y - state.dragOffset.y;
+
+        photo.style.posX = Math.max(0.02, Math.min(0.98, targetCenterX / photo.width));
+        photo.style.posY = Math.max(0.02, Math.min(0.98, targetCenterY / photo.height));
+
+        refreshLivePreview();
+      });
+
+      function endCanvasDrag(e) {
+        if (!state.isDragging) return;
+        state.isDragging = false;
+        els.previewCanvas.classList.remove('dragging-stamp');
+        if (e.pointerId !== undefined) {
+          try {
+            els.previewCanvas.releasePointerCapture(e.pointerId);
+          } catch (_) {}
+        }
+      }
+
+      els.previewCanvas.addEventListener('pointerup', endCanvasDrag);
+      els.previewCanvas.addEventListener('pointercancel', endCanvasDrag);
+
+      // =========================================================================
+      // 9. CONTROL EVENT LISTENERS
+      // =========================================================================
+      // Upload triggers
+      els.mainDropzone.addEventListener('click', () => els.fileInput.click());
+      els.mainDropzone.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          els.fileInput.click();
+        }
+      });
+      els.addMoreBtn.addEventListener('click', () => els.fileInput.click());
+
+      els.fileInput.addEventListener('change', (e) => {
+        if (e.target.files?.length) {
+          handleFiles(e.target.files);
+          e.target.value = '';
+        }
+      });
+
+      // Drag & drop on initial dropzone
+      ['dragenter', 'dragover'].forEach((evt) => {
+        els.mainDropzone.addEventListener(evt, (e) => {
+          e.preventDefault();
+          els.mainDropzone.classList.add('drag-active');
+        });
+      });
+
+      ['dragleave', 'drop'].forEach((evt) => {
+        els.mainDropzone.addEventListener(evt, (e) => {
+          e.preventDefault();
+          els.mainDropzone.classList.remove('drag-active');
+        });
+      });
+
+      els.mainDropzone.addEventListener('drop', (e) => {
+        if (e.dataTransfer?.files?.length) {
+          handleFiles(e.dataTransfer.files);
+        }
+      });
+
+      // Drag & drop onto active preview stage to add more photos
+      ['dragenter', 'dragover'].forEach((evt) => {
+        els.previewStage.addEventListener(evt, (e) => {
+          if (e.dataTransfer?.types?.includes('Files')) {
+            e.preventDefault();
+            els.canvasViewport.classList.add('drag-over-stage');
+          }
+        });
+      });
+
+      ['dragleave', 'drop'].forEach((evt) => {
+        els.previewStage.addEventListener(evt, (e) => {
+          if (evt === 'dragleave' && els.previewStage.contains(e.relatedTarget)) return;
+          els.canvasViewport.classList.remove('drag-over-stage');
+        });
+      });
+
+      els.previewStage.addEventListener('drop', (e) => {
+        e.preventDefault();
+        if (e.dataTransfer?.files?.length) {
+          handleFiles(e.dataTransfer.files);
+        }
+      });
+
+      // Reset / Clear all
+      els.clearAllBtn.addEventListener('click', () => {
+        state.photos.forEach((p) => URL.revokeObjectURL(p.objectUrl));
+        state.photos = [];
+        state.activeIndex = 0;
+        els.workspace.classList.remove('active');
+        els.dropzoneScreen.style.display = 'flex';
+        els.clearAllBtn.style.display = 'none';
+      });
+
+      // Manual Date & Time Input
+      els.dateTimeInput.addEventListener('input', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        const parsed = fromDateTimeLocalValue(e.target.value);
+        if (parsed) {
+          photo.currentDate = parsed;
+          photo.dateSource = 'manual';
+          updateDateSourceBadge('manual');
+          refreshLivePreview();
+          // Update thumbnail date badge
+          const activeThumbBadge = els.filmstripList.children[state.activeIndex]?.querySelector('.thumb-badge');
+          if (activeThumbBadge) {
+            activeThumbBadge.textContent = formatTimestamp(parsed, 'MM/DD/YY');
+          }
+        }
+      });
+
+      // Reset to Original EXIF / File Date
+      els.resetExifDateBtn.addEventListener('click', () => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        photo.currentDate = new Date(photo.originalDate.getTime());
+        photo.dateSource = photo.originalSource;
+        els.dateTimeInput.value = toDateTimeLocalValue(photo.currentDate);
+        updateDateSourceBadge(photo.dateSource);
+        refreshLivePreview();
+        const activeThumbBadge = els.filmstripList.children[state.activeIndex]?.querySelector('.thumb-badge');
+        if (activeThumbBadge) {
+          activeThumbBadge.textContent = formatTimestamp(photo.currentDate, 'MM/DD/YY');
+        }
+        showToast('Restored original timestamp');
+      });
+
+      // Format Preset & Custom Pattern
+      els.formatPresetSelect.addEventListener('change', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        const val = e.target.value;
+        photo.style.formatPreset = val;
+        if (val !== 'custom') {
+          photo.style.formatPattern = val;
+          els.customFormatInput.value = val;
+        }
+        refreshLivePreview();
+      });
+
+      els.customFormatInput.addEventListener('input', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        photo.style.formatPattern = e.target.value;
+        // Check if matches any preset
+        const matchingOption = Array.from(els.formatPresetSelect.options).find(
+          (opt) => opt.value === e.target.value
+        );
+        photo.style.formatPreset = matchingOption ? matchingOption.value : 'custom';
+        els.formatPresetSelect.value = photo.style.formatPreset;
+        refreshLivePreview();
+      });
+
+      // Typography & Styling
+      els.fontFamilySelect.addEventListener('change', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        photo.style.fontFamily = e.target.value;
+        refreshLivePreview();
+      });
+
+      els.fontSizeSlider.addEventListener('input', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        const val = parseFloat(e.target.value);
+        photo.style.fontSizePct = val;
+        els.fontSizeVal.textContent = `${val.toFixed(1)}%`;
+        refreshLivePreview();
+      });
+
+      els.colorSwatches.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const photo = state.photos[state.activeIndex];
+          if (!photo) return;
+          const color = btn.dataset.color;
+          photo.style.textColor = color;
+          els.textColorPicker.value = color;
+          els.colorSwatches.forEach((b) => b.classList.toggle('active', b === btn));
+          refreshLivePreview();
+        });
+      });
+
+      els.textColorPicker.addEventListener('input', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        photo.style.textColor = e.target.value;
+        els.colorSwatches.forEach((b) =>
+          b.classList.toggle('active', b.dataset.color.toUpperCase() === e.target.value.toUpperCase())
+        );
+        refreshLivePreview();
+      });
+
+      els.shadowToggle.addEventListener('change', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        photo.style.dropShadow = e.target.checked;
+        refreshLivePreview();
+      });
+
+      els.bgPillToggle.addEventListener('change', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        photo.style.bgPill = e.target.checked;
+        els.bgPillSubControls.classList.toggle('hidden', !e.target.checked);
+        refreshLivePreview();
+      });
+
+      els.bgColorPicker.addEventListener('input', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        photo.style.bgColor = e.target.value;
+        refreshLivePreview();
+      });
+
+      els.bgOpacitySlider.addEventListener('input', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        const pct = parseInt(e.target.value, 10);
+        photo.style.bgOpacity = pct / 100;
+        els.bgOpacityVal.textContent = `${pct}%`;
+        refreshLivePreview();
+      });
+
+      // Corner Snap Buttons & Margin
+      els.cornerBtns.forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const photo = state.photos[state.activeIndex];
+          if (!photo) return;
+          snapToCorner(photo, btn.dataset.corner);
+          els.cornerBtns.forEach((b) => b.classList.toggle('active', b === btn));
+          refreshLivePreview();
+        });
+      });
+
+      els.edgeMarginSlider.addEventListener('input', (e) => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+        const val = parseFloat(e.target.value);
+        photo.style.marginPct = val;
+        els.edgeMarginVal.textContent = `${val.toFixed(1)}%`;
+        if (photo.style.corner !== 'custom') {
+          snapToCorner(photo, photo.style.corner);
+        }
+        refreshLivePreview();
+      });
+
+      // =========================================================================
+      // 10. APPLY TO ALL & FULL-RESOLUTION EXPORT (SINGLE + BATCH ZIP)
+      // =========================================================================
+      els.applyToAllBtn.addEventListener('click', () => {
+        if (state.photos.length <= 1) {
+          showToast('Style settings are active on your photo');
+          return;
+        }
+        const sourceStyle = state.photos[state.activeIndex].style;
+        state.photos.forEach((photo, idx) => {
+          if (idx !== state.activeIndex) {
+            photo.style = { ...sourceStyle };
+          }
+        });
+        showToast(`Applied style & position to all ${state.photos.length} photos!`);
+      });
+
+      function getExportFilename(originalName, mimeType) {
+        const ext = mimeType === 'image/png' ? 'png' : 'jpg';
+        const baseName = originalName.replace(/\.[^/.]+$/, '');
+        return `${baseName}_stamped.${ext}`;
+      }
+
+      function canvasToBlob(canvas, mimeType, quality = 0.95) {
+        return new Promise((resolve) => {
+          canvas.toBlob((blob) => resolve(blob), mimeType, quality);
+        });
+      }
+
+      // Download Single Current Photo
+      els.downloadCurrentBtn.addEventListener('click', async () => {
+        const photo = state.photos[state.activeIndex];
+        if (!photo) return;
+
+        const mimeType = els.exportFormatSelect.value;
+        const offscreen = document.createElement('canvas');
+        renderPhotoToCanvas(photo, offscreen);
+
+        const blob = await canvasToBlob(offscreen, mimeType, 0.95);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = getExportFilename(photo.name, mimeType);
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast(`Downloaded ${a.download}`);
+      });
+
+      // Download All Photos as ZIP using JSZip
+      els.downloadAllZipBtn.addEventListener('click', async () => {
+        if (state.photos.length === 0) return;
+        if (!window.JSZip) {
+          showToast('JSZip library failed to load. Please check connection.');
+          return;
+        }
+
+        const btn = els.downloadAllZipBtn;
+        btn.disabled = true;
+        const mimeType = els.exportFormatSelect.value;
+        const zip = new window.JSZip();
+        const offscreen = document.createElement('canvas');
+        const usedNames = new Set();
+
+        try {
+          for (let i = 0; i < state.photos.length; i++) {
+            const photo = state.photos[i];
+            els.zipBtnLabel.textContent = `Processing ${i + 1} / ${state.photos.length}...`;
+
+            // Yield briefly to keep UI responsive during heavy full-res rendering
+            await new Promise((r) => setTimeout(r, 15));
+
+            renderPhotoToCanvas(photo, offscreen);
+            const blob = await canvasToBlob(offscreen, mimeType, 0.95);
+
+            // Deduplicate filenames if user uploaded identically named files
+            let fileName = getExportFilename(photo.name, mimeType);
+            let counter = 1;
+            while (usedNames.has(fileName)) {
+              const ext = mimeType === 'image/png' ? 'png' : 'jpg';
+              const base = photo.name.replace(/\.[^/.]+$/, '');
+              fileName = `${base}_stamped_${counter}.${ext}`;
+              counter++;
+            }
+            usedNames.add(fileName);
+
+            zip.file(fileName, blob);
+          }
+
+          els.zipBtnLabel.textContent = 'Compressing ZIP...';
+          const zipBlob = await zip.generateAsync({ type: 'blob' });
+          const url = URL.createObjectURL(zipBlob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `PhotoTimestamper_Batch_${state.photos.length}_Photos.zip`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 2000);
+
+          showToast(`Exported ${state.photos.length} photos to ZIP!`);
+        } catch (err) {
+          console.error('Batch ZIP export error:', err);
+          showToast('An error occurred while creating the ZIP file.');
+        } finally {
+          btn.disabled = false;
+          els.zipBtnLabel.textContent = 'Download All as ZIP';
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
